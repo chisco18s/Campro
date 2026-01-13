@@ -3,122 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"/>
-    <title>ULTIMATE SPECTRAL AI v11</title>
+    <title>SPECTRAL AI v12 - PRO EVP</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
         :root { --main: #00f2ff; --danger: #ff004c; --ui: var(--main); }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
         body { background: #000; color: white; overflow: hidden; }
 
-        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; transition: opacity 0.5s; }
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.4; transition: 0.3s; }
         #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
 
-        /* HUD Superior */
+        /* HUD Superior Dinámico */
         .hud-top {
-            position: absolute; top: 0; width: 100%; padding: 40px 20px 20px;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-            display: flex; justify-content: space-between; z-index: 10;
-            border-bottom: 1px solid var(--ui); transition: 0.3s;
+            position: absolute; top: 0; width: 100%; padding: 45px 20px 20px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+            display: grid; grid-template-columns: 1fr 1fr 1fr; z-index: 10;
+            border-bottom: 1px solid var(--ui);
         }
-        .stat { font-size: 10px; color: var(--ui); letter-spacing: 1px; }
-        .val { font-size: 16px; font-weight: bold; color: white; display: block; }
+        .stat { font-size: 9px; color: var(--ui); display: block; }
+        .val { font-size: 14px; font-weight: bold; }
 
-        /* Consola EVP */
-        #evp-display {
-            position: absolute; top: 120px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 5px;
-            border: 1px dashed var(--ui); text-align: center; z-index: 10;
+        /* Visualizador de Audio (Psicofonía) */
+        #evp-container {
+            position: absolute; top: 130px; left: 50%; transform: translateX(-50%);
+            width: 90%; background: rgba(0,0,0,0.7); border: 1px solid var(--ui);
+            padding: 10px; z-index: 10; text-align: center;
+        }
+        #audio-visualizer { width: 100%; height: 40px; background: #000; margin-bottom: 5px; }
+        #evp-word { 
+            font-size: 22px; color: #fff; font-style: italic; font-weight: bold;
+            text-shadow: 0 0 10px var(--ui); min-height: 28px;
         }
 
-        /* UI Inferior */
+        /* Registro de Eventos */
+        #log {
+            position: absolute; bottom: 100px; left: 20px; width: 200px;
+            font-size: 9px; color: var(--ui); z-index: 10; pointer-events: none;
+        }
+
+        /* UI de Control */
         .ui-controls {
             position: absolute; bottom: 30px; width: 100%;
             display: flex; justify-content: center; gap: 10px; z-index: 20;
         }
         button {
-            background: rgba(0,0,0,0.7); border: 1px solid var(--ui);
-            color: var(--ui); padding: 12px 20px; border-radius: 5px;
-            font-size: 10px; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px);
+            background: rgba(0,0,0,0.8); border: 1px solid var(--ui);
+            color: var(--ui); padding: 12px 18px; border-radius: 4px;
+            font-size: 9px; cursor: pointer;
         }
-        button.active { background: var(--ui); color: #000; }
+        button.active { background: var(--ui); color: #000; box-shadow: 0 0 10px var(--ui); }
 
-        /* Etiquetas */
-        .entity-tag {
-            position: absolute; background: var(--danger); color: white;
-            padding: 4px 10px; font-size: 12px; font-weight: bold;
-            z-index: 15; pointer-events: none; text-transform: uppercase;
-        }
+        .glitch-red { animation: flash 0.2s infinite; }
+        @keyframes flash { 0% { opacity: 0.5; } 50% { opacity: 1; color: red; } 100% { opacity: 0.5; } }
     </style>
 </head>
 <body>
 
-    <div class="hud-top" id="hud">
-        <div><span class="stat">EMF_SCAN</span><span id="emf" class="val">0.00 μT</span></div>
-        <div style="text-align: right;"><span class="stat">AMENAZA</span><span id="threat" class="val">IDLE</span></div>
+    <div class="hud-top">
+        <div><span class="stat">EMF_SENS</span><span id="emf" class="val">0.00</span></div>
+        <div style="text-align:center"><span class="stat">DB_LEVEL</span><span id="db-lvl" class="val">-Inf</span></div>
+        <div style="text-align:right"><span class="stat">SIGNAL</span><span id="threat" class="val">SCANNING</span></div>
     </div>
 
-    <div id="evp-display">
-        <span class="stat" style="font-size: 8px;">EVP_TRANSCRIBER</span><br>
-        <span id="evp-word" style="font-size: 18px; color: #fff;">---</span>
+    <div id="evp-container">
+        <canvas id="audio-visualizer"></canvas>
+        <div id="evp-word">CALIBRANDO...</div>
     </div>
+
+    <div id="log"></div>
 
     <video id="video" playsinline muted></video>
     <canvas id="canvas"></canvas>
 
-    <div id="entity-tag" class="entity-tag" style="display:none"></div>
-
     <div class="ui-controls">
         <button id="btn-camera">🔄 CÁMARA</button>
         <button id="btn-ghost">👻 GHOST</button>
-        <button id="btn-evp">🔊 EVP: ON</button>
+        <button id="btn-rec" class="active">⏺ EVP ACTIVE</button>
     </div>
 
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const tag = document.getElementById('entity-tag');
+        const audioCanvas = document.getElementById('audio-visualizer');
+        const actx = audioCanvas.getContext('2d');
         
         let poseDetector;
         let isGhost = false;
-        let evpActive = true;
         let currentFacing = 'environment';
         let activeEntity = null;
         let audioCtx, analyser, dataArray;
 
-        const WORDS = ["MÍRAME", "FRÍO", "AQUÍ", "SALGA", "AYUDA", "NUNCA"];
-        const ANATOMY = { 'CABEZA':0, 'TORSO':11, 'BRAZO_L':13, 'BRAZO_R':14, 'PIERNA_L':25, 'PIERNA_R':26 };
+        const EVP_LIBRARY = ["AYÚDAME", "NO TE VAYAS", "AQUÍ ESTOY", "SOLO", "FRÍO", "ESCÚCHAME", "LARGO", "MORIR", "VETE"];
 
         async function init() {
-            poseDetector = new Pose({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-            });
-
-            poseDetector.setOptions({
-                modelComplexity: 0,
-                smoothLandmarks: true,
-                minDetectionConfidence: 0.5
-            });
-
+            poseDetector = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+            poseDetector.setOptions({ modelComplexity: 0, smoothLandmarks: true, minDetectionConfidence: 0.6 });
             poseDetector.onResults(onResults);
+            
             await setupCamera();
             setupAudio();
 
             const frameLoop = async () => {
                 if (video.readyState >= 2) await poseDetector.send({ image: video });
-                if (evpActive) updateEVP();
+                drawAudioWave();
                 requestAnimationFrame(frameLoop);
             };
             frameLoop();
         }
 
         async function setupCamera() {
-            if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
+                video: { facingMode: currentFacing, width: { ideal: 640 } }
             });
             video.srcObject = stream;
-            video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
             video.play();
             video.onloadedmetadata = () => {
                 canvas.width = video.videoWidth;
@@ -127,103 +125,113 @@
         }
 
         function setupAudio() {
-            try {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-                    const source = audioCtx.createMediaStreamSource(stream);
-                    analyser = audioCtx.createAnalyser();
-                    source.connect(analyser);
-                    dataArray = new Uint8Array(analyser.frequencyBinCount);
-                });
-            } catch(e) { console.log("Audio no soportado"); }
+                const source = audioCtx.createMediaStreamSource(stream);
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                setInterval(processEVP, 2500); // Intento de psicofonía cada 2.5s
+            });
         }
 
-        function onResults(results) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.save();
-            if (currentFacing === 'user') {
-                ctx.translate(canvas.width, 0);
-                ctx.scale(-1, 1);
+        function drawAudioWave() {
+            if (!analyser) return;
+            analyser.getByteFrequencyData(dataArray);
+            actx.clearRect(0, 0, audioCanvas.width, audioCanvas.height);
+            actx.strokeStyle = document.documentElement.style.getPropertyValue('--ui') || '#00f2ff';
+            actx.beginPath();
+            let sliceWidth = audioCanvas.width / dataArray.length;
+            let x = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                let v = dataArray[i] / 128.0;
+                let y = v * audioCanvas.height / 2;
+                if (i === 0) actx.moveTo(x, y); else actx.lineTo(x, y);
+                x += sliceWidth;
             }
+            actx.stroke();
+            
+            let sum = dataArray.reduce((a, b) => a + b, 0);
+            let avg = sum / dataArray.length;
+            document.getElementById('db-lvl').innerText = Math.floor(avg) + " dB";
+            document.getElementById('emf').innerText = (activeEntity ? 55 + (avg/2) : avg/3).toFixed(2);
+        }
 
-            if (results.poseLandmarks) {
+        function processEVP() {
+            if (!analyser) return;
+            let sum = dataArray.reduce((a, b) => a + b, 0);
+            let avg = sum / dataArray.length;
+
+            // Si hay ruido ambiente o una entidad, hay más probabilidad
+            if ((avg > 35 || activeEntity) && Math.random() > 0.7) {
+                const word = EVP_LIBRARY[Math.floor(Math.random() * EVP_LIBRARY.length)];
+                document.getElementById('evp-word').innerText = word;
+                document.getElementById('evp-word').classList.add('glitch-red');
+                speakParanormal(word);
+                addLog(`EVP: ${word}`);
+                setTimeout(() => {
+                    document.getElementById('evp-word').innerText = "ESCUCHANDO...";
+                    document.getElementById('evp-word').classList.remove('glitch-red');
+                }, 2000);
+            }
+        }
+
+        function speakParanormal(text) {
+            const ut = new SpeechSynthesisUtterance(text);
+            ut.pitch = 0.1; // Súper grave
+            ut.rate = 0.5;  // Súper lento
+            ut.volume = 0.8;
+            window.speechSynthesis.speak(ut);
+        }
+
+        function onResults(res) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (res.poseLandmarks) {
                 if (!activeEntity) {
-                    const height = Math.abs(results.poseLandmarks[28].y - results.poseLandmarks[0].y);
-                    activeEntity = {
-                        id: "ID-" + Math.floor(Math.random()*999),
-                        type: height > 0.6 ? "COLOSO" : "HUMANOIDE"
-                    };
+                    activeEntity = { id: "E-" + Math.floor(Math.random()*999) };
                     document.documentElement.style.setProperty('--ui', 'var(--danger)');
-                    navigator.vibrate(200);
+                    navigator.vibrate([100, 200]);
                 }
-                drawEntity(results.poseLandmarks);
-                document.getElementById('threat').innerText = activeEntity.type;
+                drawSkeleton(res.poseLandmarks);
+                document.getElementById('threat').innerText = "IDENTIFICADO";
             } else {
                 if (activeEntity) {
                     activeEntity = null;
                     document.documentElement.style.setProperty('--ui', 'var(--main)');
-                    tag.style.display = 'none';
-                    document.getElementById('threat').innerText = "IDLE";
+                    document.getElementById('threat').innerText = "SCANNING";
                 }
             }
-            ctx.restore();
         }
 
-        function drawEntity(lm) {
-            // Dibujar Malla Sólida
-            ctx.beginPath();
-            ctx.fillStyle = "rgba(255, 0, 76, 0.3)";
+        function drawSkeleton(lm) {
+            ctx.fillStyle = "rgba(255, 0, 76, 0.2)";
             ctx.strokeStyle = "white";
-            ctx.lineWidth = 2;
-
-            // Silueta básica
-            const points = [0, 12, 24, 28, 27, 23, 11];
-            points.forEach((i, idx) => {
+            ctx.lineWidth = 1;
+            
+            // Cuerpo Sólido
+            ctx.beginPath();
+            [0, 12, 24, 28, 27, 23, 11].forEach((i, idx) => {
                 const x = lm[i].x * canvas.width;
                 const y = lm[i].y * canvas.height;
                 if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             });
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+            ctx.closePath(); ctx.fill(); ctx.stroke();
 
-            // Etiquetas Anatómicas
-            ctx.fillStyle = "white";
-            ctx.font = "10px Arial";
-            for (let part in ANATOMY) {
-                const p = lm[ANATOMY[part]];
-                if (p.visibility > 0.5) {
-                    ctx.fillText(part, p.x * canvas.width + 5, p.y * canvas.height);
-                    ctx.fillRect(p.x * canvas.width - 2, p.y * canvas.height - 2, 4, 4);
-                }
-            }
-
-            // Etiqueta Principal (Flotante fuera del ctx transformado)
-            const head = lm[0];
-            tag.style.display = 'block';
-            tag.style.left = (currentFacing === 'user' ? (1 - head.x) : head.x) * window.innerWidth + 'px';
-            tag.style.top = head.y * window.innerHeight - 60 + 'px';
-            tag.innerText = `${activeEntity.type} ${activeEntity.id}`;
+            // Puntos Anatómicos
+            const parts = ["CABEZA", "HOMBRO_L", "HOMBRO_R", "CADERA_L", "CADERA_R"];
+            const indices = [0, 11, 12, 23, 24];
+            indices.forEach((idx, i) => {
+                const p = lm[idx];
+                ctx.fillStyle = "white";
+                ctx.fillText(parts[i], p.x * canvas.width + 5, p.y * canvas.height);
+                ctx.fillRect(p.x * canvas.width - 2, p.y * canvas.height - 2, 4, 4);
+            });
         }
 
-        function updateEVP() {
-            if (!analyser) return;
-            analyser.getByteFrequencyData(dataArray);
-            const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-            document.getElementById('emf').innerText = (activeEntity ? 40 + avg : avg/2).toFixed(2);
-
-            if (avg > 40 && Math.random() > 0.99) {
-                const word = WORDS[Math.floor(Math.random()*WORDS.length)];
-                document.getElementById('evp-word').innerText = word;
-                speak(word);
-                setTimeout(() => document.getElementById('evp-word').innerText = "---", 2000);
-            }
-        }
-
-        function speak(t) {
-            const ut = new SpeechSynthesisUtterance(t);
-            ut.pitch = 0.1; ut.rate = 0.7;
-            window.speechSynthesis.speak(ut);
+        function addLog(m) {
+            const l = document.getElementById('log');
+            l.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}<br>` + l.innerHTML;
         }
 
         document.getElementById('btn-camera').onclick = () => {
@@ -233,13 +241,7 @@
 
         document.getElementById('btn-ghost').onclick = function() {
             isGhost = !isGhost;
-            video.style.opacity = isGhost ? "0.1" : "0.5";
-            this.classList.toggle('active');
-        };
-
-        document.getElementById('btn-evp').onclick = function() {
-            evpActive = !evpActive;
-            this.innerText = `EVP: ${evpActive ? 'ON' : 'OFF'}`;
+            video.style.opacity = isGhost ? "0.05" : "0.4";
             this.classList.toggle('active');
         };
 
@@ -247,4 +249,5 @@
     </script>
 </body>
 </html>
+
 
