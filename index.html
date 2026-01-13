@@ -1,178 +1,250 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect Pro — Single Player</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
-    
-    .ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 10; }
-    button {
-      background: rgba(255,255,255,0.15); backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.3); color: white;
-      padding: 15px 25px; border-radius: 50px; cursor: pointer; font-weight: bold;
-    }
-    button:active { background: #00f2ff; color: #000; }
-    .status {
-      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.7); padding: 8px 20px; border-radius: 20px;
-      color: #00f2ff; font-weight: bold; z-index: 10; border: 1px solid #00f2ff;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+    <title>ULTIMATE SPECTRAL AI v11</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+    <style>
+        :root { --main: #00f2ff; --danger: #ff004c; --ui: var(--main); }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
+        body { background: #000; color: white; overflow: hidden; }
+
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; transition: opacity 0.5s; }
+        #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+
+        /* HUD Superior */
+        .hud-top {
+            position: absolute; top: 0; width: 100%; padding: 40px 20px 20px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            display: flex; justify-content: space-between; z-index: 10;
+            border-bottom: 1px solid var(--ui); transition: 0.3s;
+        }
+        .stat { font-size: 10px; color: var(--ui); letter-spacing: 1px; }
+        .val { font-size: 16px; font-weight: bold; color: white; display: block; }
+
+        /* Consola EVP */
+        #evp-display {
+            position: absolute; top: 120px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 5px;
+            border: 1px dashed var(--ui); text-align: center; z-index: 10;
+        }
+
+        /* UI Inferior */
+        .ui-controls {
+            position: absolute; bottom: 30px; width: 100%;
+            display: flex; justify-content: center; gap: 10px; z-index: 20;
+        }
+        button {
+            background: rgba(0,0,0,0.7); border: 1px solid var(--ui);
+            color: var(--ui); padding: 12px 20px; border-radius: 5px;
+            font-size: 10px; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px);
+        }
+        button.active { background: var(--ui); color: #000; }
+
+        /* Etiquetas */
+        .entity-tag {
+            position: absolute; background: var(--danger); color: white;
+            padding: 4px 10px; font-size: 12px; font-weight: bold;
+            z-index: 15; pointer-events: none; text-transform: uppercase;
+        }
+    </style>
 </head>
 <body>
 
-  <div class="status" id="status">INICIALIZANDO KINECT...</div>
-  <video id="video" playsinline muted></video>
-  <canvas id="canvas"></canvas>
+    <div class="hud-top" id="hud">
+        <div><span class="stat">EMF_SCAN</span><span id="emf" class="val">0.00 μT</span></div>
+        <div style="text-align: right;"><span class="stat">AMENAZA</span><span id="threat" class="val">IDLE</span></div>
+    </div>
 
-  <div class="ui">
-    <button id="btn-camera">🔄 Girar Cámara</button>
-    <button id="btn-ghost">👻 Modo Ghost</button>
-  </div>
+    <div id="evp-display">
+        <span class="stat" style="font-size: 8px;">EVP_TRANSCRIBER</span><br>
+        <span id="evp-word" style="font-size: 18px; color: #fff;">---</span>
+    </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
 
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const statusEl = document.getElementById('status');
-    
-    let poseDetector;
-    let isGhost = false;
-    let currentFacing = 'user';
+    <div id="entity-tag" class="entity-tag" style="display:none"></div>
 
-    // Conexiones completas incluyendo rostro
-    const CONNECTIONS = [
-      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], // Rostro/Cabeza
-      [11,12], [11,13], [13,15], [12,14], [14,16], // Brazos
-      [11,23], [12,24], [23,24], // Torso
-      [23,25], [25,27], [24,26], [26,28]  // Piernas
-    ];
+    <div class="ui-controls">
+        <button id="btn-camera">🔄 CÁMARA</button>
+        <button id="btn-ghost">👻 GHOST</button>
+        <button id="btn-evp">🔊 EVP: ON</button>
+    </div>
 
-    async function init() {
-      poseDetector = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-      });
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const tag = document.getElementById('entity-tag');
+        
+        let poseDetector;
+        let isGhost = false;
+        let evpActive = true;
+        let currentFacing = 'environment';
+        let activeEntity = null;
+        let audioCtx, analyser, dataArray;
 
-      poseDetector.setOptions({
-        modelComplexity: 0, // 0 es el modo más rápido, ideal para Honor 400 Lite
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
+        const WORDS = ["MÍRAME", "FRÍO", "AQUÍ", "SALGA", "AYUDA", "NUNCA"];
+        const ANATOMY = { 'CABEZA':0, 'TORSO':11, 'BRAZO_L':13, 'BRAZO_R':14, 'PIERNA_L':25, 'PIERNA_R':26 };
 
-      poseDetector.onResults(onResults);
-      
-      await setupCamera();
-      
-      // Ciclo de detección optimizado
-      const frameLoop = async () => {
-        if (video.readyState >= 2) {
-          await poseDetector.send({ image: video });
+        async function init() {
+            poseDetector = new Pose({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+
+            poseDetector.setOptions({
+                modelComplexity: 0,
+                smoothLandmarks: true,
+                minDetectionConfidence: 0.5
+            });
+
+            poseDetector.onResults(onResults);
+            await setupCamera();
+            setupAudio();
+
+            const frameLoop = async () => {
+                if (video.readyState >= 2) await poseDetector.send({ image: video });
+                if (evpActive) updateEVP();
+                requestAnimationFrame(frameLoop);
+            };
+            frameLoop();
         }
-        requestAnimationFrame(frameLoop);
-      };
-      frameLoop();
-    }
 
-    async function setupCamera() {
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(t => t.stop());
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
-        });
-        
-        video.srcObject = stream;
-        // Inversión visual de la cámara
-        video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-        
-        return new Promise(res => {
-          video.onloadedmetadata = () => {
+        async function setupCamera() {
+            if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
+            });
+            video.srcObject = stream;
+            video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
             video.play();
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            statusEl.innerText = "SISTEMA ACTIVO";
-            res();
-          };
-        });
-      } catch (e) {
-        statusEl.innerText = "ERROR DE CÁMARA";
-      }
-    }
-
-    function onResults(results) {
-      ctx.save();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Inversión del esqueleto para que coincida con la cámara frontal
-      if (currentFacing === 'user') {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-      }
-
-      if (isGhost) {
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-
-      if (results.poseLandmarks) {
-        drawSkeleton(results.poseLandmarks);
-      }
-      ctx.restore();
-    }
-
-    function drawSkeleton(landmarks) {
-      ctx.strokeStyle = "#00f2ff";
-      ctx.lineWidth = 5;
-      ctx.lineCap = "round";
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = "#00f2ff";
-
-      // Huesos
-      CONNECTIONS.forEach(([a, b]) => {
-        const p1 = landmarks[a];
-        const p2 = landmarks[b];
-        if (p1.visibility > 0.5 && p2.visibility > 0.5) {
-          ctx.beginPath();
-          ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
-          ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
-          ctx.stroke();
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            };
         }
-      });
 
-      // Puntos
-      ctx.shadowBlur = 0;
-      landmarks.forEach((p, i) => {
-        if (p.visibility > 0.5) {
-          ctx.beginPath();
-          ctx.arc(p.x * canvas.width, p.y * canvas.height, i < 11 ? 3 : 5, 0, Math.PI * 2);
-          ctx.fillStyle = i < 11 ? "white" : "#00f2ff";
-          ctx.fill();
+        function setupAudio() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                    const source = audioCtx.createMediaStreamSource(stream);
+                    analyser = audioCtx.createAnalyser();
+                    source.connect(analyser);
+                    dataArray = new Uint8Array(analyser.frequencyBinCount);
+                });
+            } catch(e) { console.log("Audio no soportado"); }
         }
-      });
-    }
 
-    document.getElementById('btn-camera').onclick = async () => {
-      currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
-      statusEl.innerText = "CAMBIANDO CÁMARA...";
-      await setupCamera();
-    };
+        function onResults(results) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            if (currentFacing === 'user') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
 
-    document.getElementById('btn-ghost').onclick = function() {
-      isGhost = !isGhost;
-      video.style.opacity = isGhost ? "0" : "1";
-    };
+            if (results.poseLandmarks) {
+                if (!activeEntity) {
+                    const height = Math.abs(results.poseLandmarks[28].y - results.poseLandmarks[0].y);
+                    activeEntity = {
+                        id: "ID-" + Math.floor(Math.random()*999),
+                        type: height > 0.6 ? "COLOSO" : "HUMANOIDE"
+                    };
+                    document.documentElement.style.setProperty('--ui', 'var(--danger)');
+                    navigator.vibrate(200);
+                }
+                drawEntity(results.poseLandmarks);
+                document.getElementById('threat').innerText = activeEntity.type;
+            } else {
+                if (activeEntity) {
+                    activeEntity = null;
+                    document.documentElement.style.setProperty('--ui', 'var(--main)');
+                    tag.style.display = 'none';
+                    document.getElementById('threat').innerText = "IDLE";
+                }
+            }
+            ctx.restore();
+        }
 
-    init();
-  </script>
+        function drawEntity(lm) {
+            // Dibujar Malla Sólida
+            ctx.beginPath();
+            ctx.fillStyle = "rgba(255, 0, 76, 0.3)";
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+
+            // Silueta básica
+            const points = [0, 12, 24, 28, 27, 23, 11];
+            points.forEach((i, idx) => {
+                const x = lm[i].x * canvas.width;
+                const y = lm[i].y * canvas.height;
+                if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Etiquetas Anatómicas
+            ctx.fillStyle = "white";
+            ctx.font = "10px Arial";
+            for (let part in ANATOMY) {
+                const p = lm[ANATOMY[part]];
+                if (p.visibility > 0.5) {
+                    ctx.fillText(part, p.x * canvas.width + 5, p.y * canvas.height);
+                    ctx.fillRect(p.x * canvas.width - 2, p.y * canvas.height - 2, 4, 4);
+                }
+            }
+
+            // Etiqueta Principal (Flotante fuera del ctx transformado)
+            const head = lm[0];
+            tag.style.display = 'block';
+            tag.style.left = (currentFacing === 'user' ? (1 - head.x) : head.x) * window.innerWidth + 'px';
+            tag.style.top = head.y * window.innerHeight - 60 + 'px';
+            tag.innerText = `${activeEntity.type} ${activeEntity.id}`;
+        }
+
+        function updateEVP() {
+            if (!analyser) return;
+            analyser.getByteFrequencyData(dataArray);
+            const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            document.getElementById('emf').innerText = (activeEntity ? 40 + avg : avg/2).toFixed(2);
+
+            if (avg > 40 && Math.random() > 0.99) {
+                const word = WORDS[Math.floor(Math.random()*WORDS.length)];
+                document.getElementById('evp-word').innerText = word;
+                speak(word);
+                setTimeout(() => document.getElementById('evp-word').innerText = "---", 2000);
+            }
+        }
+
+        function speak(t) {
+            const ut = new SpeechSynthesisUtterance(t);
+            ut.pitch = 0.1; ut.rate = 0.7;
+            window.speechSynthesis.speak(ut);
+        }
+
+        document.getElementById('btn-camera').onclick = () => {
+            currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
+            setupCamera();
+        };
+
+        document.getElementById('btn-ghost').onclick = function() {
+            isGhost = !isGhost;
+            video.style.opacity = isGhost ? "0.1" : "0.5";
+            this.classList.toggle('active');
+        };
+
+        document.getElementById('btn-evp').onclick = function() {
+            evpActive = !evpActive;
+            this.innerText = `EVP: ${evpActive ? 'ON' : 'OFF'}`;
+            this.classList.toggle('active');
+        };
+
+        init();
+    </script>
 </body>
 </html>
+
